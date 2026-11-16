@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Business Snakes & Ladders</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; /* Tailwind slate-900 */
+        }
+
+        .token {
+            position: absolute;
+            width: clamp(14px, 4vw, 32px);
+            height: clamp(14px, 4vw, 32px);
+            transform: translate(-50%, -50%);
+            transition: left 0.3s ease-in-out, top 0.3s ease-in-out;
+            z-index: 20;
+            filter: drop-shadow(0 4px 4px rgba(0,0,0,0.8)) drop-shadow(0 0 6px currentColor);
+        }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        
+        .modal-active {
+            opacity: 1 !important;
+            transform: scale(1) !important;
+        }
+
+        .shield-icon {
+            filter: drop-shadow(0 0 4px #fbbf24);
+        }
+
+        @keyframes chestGlow {
+            0% { box-shadow: inset 0 0 15px rgba(234, 179, 8, 0.5), 0 0 10px rgba(234, 179, 8, 0.5); transform: scale(1); }
+            50% { box-shadow: inset 0 0 25px rgba(234, 179, 8, 0.9), 0 0 25px rgba(234, 179, 8, 0.9); transform: scale(1.08); z-index: 30; }
+            100% { box-shadow: inset 0 0 15px rgba(234, 179, 8, 0.5), 0 0 10px rgba(234, 179, 8, 0.5); transform: scale(1); }
+        }
+        .chest-tile {
+            animation: chestGlow 1.5s infinite ease-in-out;
+            background-color: #fef08a !important;
+            border: 3px solid #eab308 !important;
+        }
+        .chest-tile span.opacity-50 {
+            opacity: 1 !important;
+            font-size: 3rem !important; /* Make chest icon bigger */
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));
+        }
+        @media (max-width: 768px) {
+            .chest-tile span.opacity-50 {
+                font-size: 2rem !important;
+            }
+        }
+        
+        @keyframes zoomPop {
+            0% { transform: scale(0.5); opacity: 0; }
+            60% { transform: scale(1.4); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-zoom-pop {
+            animation: zoomPop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body class="text-white overflow-x-hidden min-h-screen">
+
+    <!-- Setup Screen -->
+    <div id="setup-screen" class="fixed inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center p-4">
+        <div class="text-6xl mb-4">🏢</div>
+        <h1 class="text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-500 mb-8 drop-shadow-2xl text-center leading-tight">
+            CORPORATE CLIMB<br><span class="text-xl md:text-3xl text-slate-300 font-bold">Business Snakes & Ladders</span>
+        </h1>
+        <div class="bg-slate-800 p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-[90vw] md:max-w-md flex flex-col gap-4 md:gap-6 border border-slate-700">
+            <h2 class="text-xl md:text-2xl text-white font-bold text-center">Select Board Members</h2>
+            <div class="flex flex-col gap-3 md:gap-4">
+                <button class="w-full py-3 md:py-4 bg-slate-700 hover:bg-slate-600 rounded-xl text-lg md:text-xl text-white font-semibold transition shadow-lg active:scale-95 border border-slate-600 touch-manipulation" onclick="startGame(2)">2 Players</button>
+                <button class="w-full py-3 md:py-4 bg-slate-700 hover:bg-slate-600 rounded-xl text-lg md:text-xl text-white font-semibold transition shadow-lg active:scale-95 border border-slate-600 touch-manipulation" onclick="startGame(3)">3 Players</button>
+                <button class="w-full py-3 md:py-4 bg-slate-700 hover:bg-slate-600 rounded-xl text-lg md:text-xl text-white font-semibold transition shadow-lg active:scale-95 border border-slate-600 touch-manipulation" onclick="startGame(4)">4 Players</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="game-screen" class="hidden min-h-screen flex flex-col lg:flex-row items-center justify-start lg:justify-center p-2 sm:p-4 md:p-8 gap-4 lg:gap-8 w-full overflow-hidden">
+        
+        <!-- Board Container -->
+        <div class="w-full max-w-[96vw] sm:max-w-[85vw] md:max-w-2xl lg:max-w-3xl relative aspect-square bg-slate-200 rounded-lg shadow-2xl border-4 lg:border-8 border-slate-800 shrink-0 mx-auto mt-4 lg:mt-0" id="board-container">
+            <div id="board-grid" class="absolute inset-0 grid grid-cols-10 grid-rows-10"></div>
+            <canvas id="overlay-canvas" class="absolute inset-0 pointer-events-none z-10"></canvas>
+            <div id="tokens-container" class="absolute inset-0 pointer-events-none z-20"></div>
+            
+            <!-- Big Board Dice Overlay -->
+            <div id="big-board-dice" class="hidden absolute inset-0 z-[25] flex items-center justify-center pointer-events-none">
+                <div class="w-24 h-24 md:w-32 md:h-32 lg:w-48 lg:h-48 bg-white rounded-3xl text-slate-800 flex items-center justify-center text-5xl md:text-7xl lg:text-9xl shadow-[0_0_40px_rgba(255,255,255,0.5)] border-8 border-slate-300 transition-transform">
+                    <i id="big-dice-icon" class="fa-solid fa-dice"></i>
+                </div>
+            </div>
+            
+            <!-- Win Overlay -->
+            <div id="win-overlay" class="hidden absolute inset-0 bg-black/90 z-50 flex flex-col items-center justify-center backdrop-blur-md p-4">
+                <h2 class="text-6xl md:text-8xl mb-4">🏆</h2>
+                <h3 id="win-text" class="text-3xl md:text-5xl font-black text-white text-center mb-6 md:mb-8 leading-tight"></h3>
+                <button onclick="location.reload()" class="px-6 py-3 md:px-8 md:py-4 bg-gradient-to-r from-blue-500 to-emerald-500 text-white font-bold rounded-xl text-lg md:text-xl hover:opacity-90 transition pointer-events-auto shadow-lg touch-manipulation">New Fiscal Year (Play Again)</button>
+            </div>
+        </div>
+        
+        <!-- Controls Container -->
+        <div class="flex flex-col items-center w-full max-w-[96vw] sm:max-w-[85vw] md:max-w-md lg:max-w-sm bg-slate-800 p-4 md:p-6 rounded-3xl shadow-xl gap-3 md:gap-4 border border-slate-700 shrink-0 mx-auto mb-8 lg:mb-0">
+            <h1 class="text-xl md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-500 mb-1 md:mb-2 text-center uppercase tracking-wider">Corporate Climb</h1>
+            
+            <!-- Turn Indicator -->
+            <div class="bg-slate-700 px-4 py-2 md:px-6 md:py-3 rounded-full flex items-center justify-center gap-2 md:gap-3 shadow-inner w-full">
+                <div id="turn-icon" class="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center"></div>
+                <span id="turn-text" class="text-base md:text-lg font-bold">Player's Turn</span>
+            </div>
+
+            <!-- Player Status / Shields -->
+            <div class="w-full bg-slate-900 rounded-xl p-3 border border-slate-700 shadow-inner flex flex-col gap-2" id="player-stats-container">
+                <h3 class="text-[10px] md:text-xs text-slate-400 font-bold uppercase tracking-wider text-center">Executive Status</h3>
+                <div id="player-stats-list" class="grid grid-cols-2 gap-2">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+            
+            <!-- Roll Button / Dice -->
+            <button id="roll-btn" class="w-20 h-20 md:w-24 md:h-24 bg-white hover:bg-slate-100 rounded-2xl md:rounded-3xl text-slate-800 flex items-center justify-center text-5xl md:text-6xl lg:text-7xl shadow-[0_4px_15px_rgba(0,0,0,0.5)] border-4 border-slate-300 transform transition active:scale-95 focus:outline-none focus:ring-4 focus:ring-blue-500 my-1 md:my-2 mx-auto cursor-pointer relative group touch-manipulation">
+                <i id="small-dice-icon" class="fa-solid fa-dice transition-transform group-hover:scale-110"></i>
+            </button>
+            <p class="text-slate-400 text-xs md:text-sm font-bold uppercase mb-1 md:mb-2 text-center">Tap to Roll</p>
+            
+            <!-- Message Log -->
+            <div class="w-full h-32 md:h-40 bg-slate-900 rounded-xl p-3 md:p-4 overflow-y-auto font-mono text-[10px] md:text-xs mt-1 border border-slate-700 shadow-inner flex flex-col gap-1" id="log-box">
+                <div class="text-slate-500 italic">> Q1 started. Roll the dice to begin!</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Treasure Chest Modal -->
+    <div id="chest-modal" class="hidden fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-slate-800 p-6 md:p-8 rounded-2xl shadow-2xl max-w-[90vw] md:max-w-md w-full border-t-8 border-yellow-400 text-center flex flex-col gap-4 md:gap-6 transform transition-all duration-300 scale-95 opacity-0" id="chest-modal-content">
+            <div class="text-5xl md:text-6xl animate-bounce">🧰</div>
+            <h2 class="text-2xl md:text-3xl font-black text-yellow-400 uppercase tracking-wide">Corporate Bonus!</h2>
+            <div class="text-left bg-slate-900 p-3 md:p-4 rounded-xl border border-slate-700">
+                <p id="chest-text-1" class="text-sm md:text-md text-slate-200 font-medium mb-3 flex items-start gap-2">
+                    <span class="text-lg md:text-xl">🛡️</span> <span>You gained a <b>Corporate Shield</b>! It will protect you from the next market crisis (snake).</span>
+                </p>
+                <p id="chest-text-2" class="text-sm md:text-md text-slate-200 font-medium flex items-start gap-2">
+                    <span class="text-lg md:text-xl">🌀</span> <span id="chest-teleport-msg"></span>
+                </p>
+            </div>
+            <button id="chest-ok-btn" class="w-full py-3 bg-yellow-500 hover:bg-yellow-400 text-slate-900 rounded-xl font-black text-base md:text-lg transition shadow-lg touch-manipulation">Collect Bonus</button>
+        </div>
+    </div>
+
+    <!-- Shield Use Modal -->
+    <div id="shield-modal" class="hidden fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-slate-800 p-6 md:p-8 rounded-2xl shadow-2xl max-w-[90vw] md:max-w-sm w-full border-t-8 border-blue-400 text-center flex flex-col gap-3 md:gap-4 transform transition-all duration-300 scale-95 opacity-0" id="shield-modal-content">
+            <div class="text-5xl md:text-6xl">🛡️</div>
+            <h2 class="text-xl md:text-2xl font-black text-blue-400 uppercase tracking-wide">Crisis Averted!</h2>
+            <p id="shield-text" class="text-sm md:text-md text-slate-200 font-medium">Your Corporate Shield absorbed the impact of the market crash. You are safe, but the shield is consumed!</p>
+            <button id="shield-ok-btn" class="w-full py-3 mt-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-base md:text-lg transition shadow-lg touch-manipulation">Phew!</button>
+        </div>
+    </div>
+
+    <!-- Ladder Modal -->
+    <div id="ladder-modal" class="hidden fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-slate-800 p-6 md:p-8 rounded-2xl shadow-2xl max-w-[90vw] md:max-w-md w-full border-t-8 border-emerald-500 text-center flex flex-col gap-4 md:gap-6 transform transition-all duration-300 scale-95 opacity-0" id="ladder-modal-content">
+            <div class="text-5xl md:text-6xl">📈</div>
+            <h2 class="text-2xl md:text-3xl font-black text-emerald-400 uppercase tracking-wide">Business Success!</h2>
+            <p id="ladder-text" class="text-base md:text-lg text-slate-200 font-medium"></p>
+            <button id="ladder-ok-btn" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-white font-bold text-base md:text-lg transition shadow-lg touch-manipulation">Capitalize (Climb)</button>
+        </div>
+    </div>
+
+    <!-- Snake Modal -->
+    <div id="snake-modal" class="hidden fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-slate-800 p-5 md:p-8 rounded-2xl shadow-2xl max-w-[95vw] md:max-w-lg w-full border-t-8 border-red-500 flex flex-col gap-4 md:gap-6 transform transition-all duration-300 scale-95 opacity-0" id="snake-modal-content">
+            <div class="flex items-center gap-3 md:gap-4 border-b border-slate-700 pb-3 md:pb-4">
+                <div class="text-4xl md:text-5xl">📉</div>
+                <div>
+                    <h2 class="text-xl md:text-2xl font-black text-red-400 uppercase tracking-wide">Market Crisis!</h2>
+                    <p class="text-slate-400 text-xs md:text-sm font-medium mt-1">Answer correctly to save the business.</p>
+                </div>
+            </div>
+            <p id="snake-question" class="text-base md:text-lg text-slate-100 font-bold leading-snug"></p>
+            <div id="snake-options" class="flex flex-col gap-2 md:gap-3">
+                <!-- Buttons generated dynamically -->
+            </div>
+            <div id="snake-feedback" class="hidden text-center text-lg md:text-xl font-black rounded-xl p-3 md:p-4"></div>
+            <button id="snake-continue-btn" class="hidden w-full py-3 md:py-4 bg-slate-600 hover:bg-slate-500 rounded-xl text-white font-bold text-base md:text-lg transition shadow-lg touch-manipulation">Acknowledge</button>
+        </div>
+    </div>
+
+    <script>
+        // --- GAME DATA & CONFIG ---
+        const ladders = [
+            { start: 3, end: 22 }, { start: 8, end: 30 },
+            { start: 28, end: 84 }, { start: 58, end: 77 },
+            { start: 75, end: 86 }, { start: 80, end: 99 }
+            // Note: 90-91 ladder removed as requested
+        ];
+
+        const snakes = [
+            { start: 17, end: 7 }, { start: 54, end: 34 },
+            { start: 62, end: 19 }, { start: 64, end: 60 },
+            { start: 87, end: 24 }, { start: 93, end: 73 },
+            { start: 95, end: 75 }, { start: 98, end: 79 },
+            { start: 36, end: 6 }, { start: 48, end: 26 },
+            { start: 45, end: 15 }, { start: 72, end: 50 } // Added extra snakes
+        ];
+
+        const chests = [27, 52, 76]; // Treasure Chest Locations
+
+        const ladderMessages = [
+            "Effective Strategic Planning! Expand to global markets.",
+            "Successful Joint Venture formed!",
+            "Philanthropic Responsibility met! Community loves you.",
+            "Strong Conceptual Skills solved a massive crisis!",
+            "Excellent teamwork synergy boosted productivity!"
+        ];
+
+        const snakeQuestions = [
+            {
+                q: "According to the Classical Model of CSR, what is the primary objective of a business?",
+                options: ["Use resources efficiently for profit", "Share resources with society", "Preserve environment"],
+                ans: 0
+            },
+            {
+                q: "Which decision-making technique involves individuals writing down ideas independently before sharing?",
+                options: ["Nominal Group Technique", "Brainstorming", "Groupthink"],
+                ans: 0
+            },
+            {
+                q: "What is a Joint Venture?",
+                options: ["Two companies form a partnership to share resources/risks", "Selling goods to foreign markets", "Granting rights to produce products"],
+                ans: 0
+            },
+            {
+                q: "Which is considered a Decisional Role for a manager?",
+                options: ["Resource Allocator", "Liaison", "Monitor"],
+                ans: 0
+            },
+            {
+                q: "Which is NOT one of the 5 Ms of Management?",
+                options: ["Marketing", "Money", "Machines"],
+                ans: 0
+            },
+            {
+                q: "According to Herzberg's theory, group involvement in decision-making acts as a:",
+                options: ["Motivator", "Hygiene factor", "Disturbance"],
+                ans: 0
+            },
+            {
+                q: "What is 'Groupthink' in teamwork?",
+                options: ["Desire for harmony overrides critique leading to flawed decisions", "Diverse members pooling expertise", "Groups moving to extreme positions"],
+                ans: 0
+            },
+            {
+                q: "Technical skills refer to:",
+                options: ["Specialized knowledge of procedures and equipment", "Sensitivity and empathy", "Reasoning and analytical thinking"],
+                ans: 0
+            }
+        ];
+
+        // Player configurations
+        const playerColors = ['#facc15', '#ef4444', '#3b82f6', '#22c55e']; // Yellow, Red, Blue, Green
+        const playerNames = ['Yellow', 'Red', 'Blue', 'Green'];
+        
+        // Human Icon SVG (Using FontAwesome instead)
+        const humanIconSVG = `<i class="fa-solid fa-user-tie drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]" style="font-size: clamp(14px, 4vw, 32px);"></i>`;
+
+        let players = [];
+        let turnIndex = 0;
+        let isAnimating = false;
+
+        // Board configurations (Vibrant Colors & Business Icons)
+        const cellColors = ['#fca5a5', '#fdba74', '#fde047', '#86efac', '#93c5fd', '#d8b4fe', '#f9a8d4']; 
+        const businessIcons = ['🏢', '💼', '📈', '🤝', '💻', '🏦', '📊', '💵', '📋', '🎯'];
+
+        const boardContainer = document.getElementById('board-container');
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+        // --- SETUP LOGIC ---
+        window.onload = () => {
+            buildBoard();
+        };
+
+        function buildBoard() {
+            const grid = document.getElementById('board-grid');
+            grid.innerHTML = '';
+            
+            let visualOrder = [];
+            // Generate board in Boustrophedon (zig-zag) order from top-left (100) to bottom-left (1)
+            for (let row = 9; row >= 0; row--) {
+                let rowCells = [];
+                for (let col = 0; col < 10; col++) {
+                    let cellNum = row * 10 + 1 + col;
+                    rowCells.push(cellNum);
+                }
+                if (row % 2 !== 0) rowCells.reverse(); 
+                visualOrder.push(...rowCells);
+            }
+
+            visualOrder.forEach((num) => {
+                const cell = document.createElement('div');
+                cell.className = 'relative flex items-center justify-center border border-slate-700/20 box-border overflow-hidden';
+                
+                const colorIndex = (num - 1) % cellColors.length;
+                let icon = businessIcons[(num - 1) % businessIcons.length];
+                
+                // Override icon if it's a treasure chest
+                if (chests.includes(num)) {
+                    icon = '🧰';
+                    cell.classList.add('chest-tile');
+                } else {
+                    cell.style.backgroundColor = cellColors[colorIndex];
+                }
+                
+                cell.innerHTML = `
+                    <span class="absolute top-1 left-1 md:top-2 md:left-2 text-[10px] md:text-sm font-black text-slate-800 drop-shadow-md z-10">
+                        ${num}
+                    </span>
+                    <span class="text-2xl md:text-4xl opacity-50 select-none">${icon}</span>
+                    ${num === 100 ? `<span class="absolute bottom-1 right-1 text-[8px] md:text-xs font-black text-white bg-emerald-500 px-1.5 py-0.5 rounded shadow-sm z-10">FINISH</span>` : ''}
+                `;
+                cell.id = `cell-${num}`;
+                grid.appendChild(cell);
+            });
+        }
+
+        function startGame(numPlayers) {
+            document.getElementById('setup-screen').classList.add('hidden');
+            document.getElementById('game-screen').classList.remove('hidden');
+            
+            players = [];
+            document.getElementById('tokens-container').innerHTML = '';
+            
+            for(let i = 0; i < numPlayers; i++) {
+                players.push({ id: i, name: playerNames[i], color: playerColors[i], pos: 0, shield: false });
+                const token = document.createElement('div');
+                token.id = `token-${i}`;
+                token.className = 'token flex items-center justify-center';
+                token.style.color = playerColors[i];
+                token.innerHTML = humanIconSVG;
+                document.getElementById('tokens-container').appendChild(token);
+            }
+            
+            turnIndex = 0;
+            updateTurnUI();
+            updatePlayerStatsUI();
+            
+            // Allow DOM to layout properly before drawing and positioning
+            setTimeout(() => {
+                drawCanvas();
+                updateTokenPositions();
+            }, 150);
+        }
+
+        // --- GAME LOOP LOGIC ---
+        document.getElementById('roll-btn').addEventListener('click', async () => {
+            if(isAnimating) return;
+            isAnimating = true;
+            document.getElementById('roll-btn').disabled = true;
+            
+            const smallDiceIcon = document.getElementById('small-dice-icon');
+            const bigDiceContainer = document.getElementById('big-board-dice');
+            const bigDiceEl = bigDiceContainer.querySelector('div');
+            const bigDiceIcon = document.getElementById('big-dice-icon');
+            
+            bigDiceContainer.classList.remove('hidden');
+            
+            let diceValue = 1;
+            const diceClasses = ['fa-dice-one', 'fa-dice-two', 'fa-dice-three', 'fa-dice-four', 'fa-dice-five', 'fa-dice-six'];
+            
+            // Dice Animation
+            for(let i = 0; i < 15; i++) {
+                diceValue = Math.floor(Math.random() * 6) + 1;
+                
+                smallDiceIcon.className = `fa-solid ${diceClasses[diceValue - 1]}`;
+                bigDiceIcon.className = `fa-solid ${diceClasses[diceValue - 1]}`;
+                
+                const rot = Math.random() * 60 - 30;
+                smallDiceIcon.parentElement.style.transform = `rotate(${rot}deg) scale(1.1)`;
+                bigDiceEl.style.transform = `rotate(${rot}deg) scale(${1 + Math.random()*0.2})`;
+                await sleep(50);
+            }
+            
+            // Final settle and pause so players can read the dice
+            smallDiceIcon.parentElement.style.transform = 'rotate(0deg) scale(1)';
+            bigDiceEl.style.transform = 'rotate(0deg) scale(1)';
+            
+            await sleep(1500); // Wait 1.5 seconds before removing the big dice
+            
+            bigDiceContainer.classList.add('hidden');
+            
+            const p = players[turnIndex];
+            logMessage(`<span style="color:${p.color}">${p.name}</span> rolled a <b class="text-white">${diceValue}</b>`);
+            
+            await movePlayer(turnIndex, diceValue);
+        });
+
+        async function movePlayer(pIndex, dice) {
+            const p = players[pIndex];
+            let target = p.pos + dice;
+            let bounceTarget = null;
+            
+            // Handle overshooting 100 (Bounce back rule)
+            if (target > 100) {
+                const excess = target - 100;
+                bounceTarget = 100 - excess;
+                target = 100;
+            }
+            
+            // Step-by-step forward animation
+            for (let step = p.pos + 1; step <= target; step++) {
+                p.pos = step;
+                updateTokenPositions();
+                await sleep(300);
+            }
+            
+            // Step-by-step bounce back animation
+            if (bounceTarget !== null) {
+                logMessage(`${p.name} bounced back!`);
+                for (let step = 99; step >= bounceTarget; step--) {
+                    p.pos = step;
+                    updateTokenPositions();
+                    await sleep(300);
+                }
+            }
+            
+            await sleep(300);
+            
+            // Check for Board Mechanics (Chest -> Snake -> Ladder)
+            const isChest = chests.includes(p.pos);
+            const snake = snakes.find(s => s.start === p.pos);
+            const ladder = ladders.find(l => l.start === p.pos);
+            
+            if (isChest) {
+                // Treasure Chest Mechanic
+                const bonusType = Math.random() < 0.5 ? 'shield' : 'teleport';
+                
+                if (bonusType === 'shield') {
+                    p.shield = true;
+                    logMessage(`🎁 <span style="color:${p.color}">${p.name}</span> found a Corporate Bonus! Gained a Shield.`);
+                    updatePlayerStatsUI();
+                    await showChestModal('shield', null, null, null);
+                } else {
+                    let opponents = players.filter(pl => pl.id !== p.id);
+                    let randomOpp = opponents[Math.floor(Math.random() * opponents.length)];
+                    let randomTile = Math.floor(Math.random() * 100) + 1;
+                    
+                    randomOpp.pos = randomTile;
+                    
+                    logMessage(`🎁 <span style="color:${p.color}">${p.name}</span> found a Corporate Bonus! Hostile Relocation triggered.`);
+                    logMessage(`🌀 <span style="color:${randomOpp.color}">${randomOpp.name}</span> was relocated to tile ${randomTile}!`);
+                    
+                    await showChestModal('teleport', randomOpp.name, randomTile, randomOpp.color);
+                    updateTokenPositions(); // Immediately update the teleported opponent
+                }
+                await sleep(500);
+            }
+            
+            if (snake) {
+                logMessage(`⚠️ Market volatility! <span style="color:${p.color}">${p.name}</span> encountered a crisis!`);
+                
+                if (p.shield) {
+                    p.shield = false;
+                    updatePlayerStatsUI();
+                    logMessage(`🛡️ <span style="color:${p.color}">${p.name}</span> used a Corporate Shield to bypass the crisis!`);
+                    await showShieldModal();
+                } else {
+                    const randomQ = snakeQuestions[Math.floor(Math.random() * snakeQuestions.length)];
+                    const answeredCorrectly = await showSnakeModal(randomQ);
+                    
+                    if (answeredCorrectly) {
+                        logMessage(`✅ Correct! <span style="color:${p.color}">${p.name}</span> dodged the snake and stayed at ${p.pos}.`);
+                    } else {
+                        logMessage(`📉 Wrong! Sliding down. <span style="color:${p.color}">${p.name}</span> fell to ${snake.end}.`);
+                        p.pos = snake.end;
+                        updateTokenPositions();
+                        await sleep(600);
+                    }
+                }
+            } else if (ladder) {
+                logMessage(`📈 Opportunity! <span style="color:${p.color}">${p.name}</span> found a business ladder!`);
+                const randomMsg = ladderMessages[Math.floor(Math.random() * ladderMessages.length)];
+                await showLadderModal(randomMsg);
+                
+                logMessage(`🪜 <span style="color:${p.color}">${p.name}</span> climbed up to ${ladder.end}!`);
+                p.pos = ladder.end;
+                updateTokenPositions();
+                await sleep(600);
+            }
+            
+            // Check win
+            if (p.pos === 100) {
+                logMessage(`🎉 <b style="color:${p.color}">${p.name.toUpperCase()} IS THE NEW CEO!</b> 🎉`);
+                showWinOverlay(p);
+                return; // End game, do not unlock turn
+            }
+            
+            // Next Turn
+            turnIndex = (turnIndex + 1) % players.length;
+            updateTurnUI();
+            isAnimating = false;
+            document.getElementById('roll-btn').disabled = false;
+        }
+
+        // --- MODAL LOGIC ---
+        function showChestModal(type, oppName, tile, oppColor) {
+            return new Promise(async resolve => {
+                const modal = document.getElementById('chest-modal');
+                const content = document.getElementById('chest-modal-content');
+                const text1 = document.getElementById('chest-text-1');
+                const text2 = document.getElementById('chest-text-2');
+                const teleportMsg = document.getElementById('chest-teleport-msg');
+                const btn = document.getElementById('chest-ok-btn');
+                
+                if (type === 'shield') {
+                    text1.classList.remove('hidden');
+                    text2.classList.add('hidden');
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                } else {
+                    text1.classList.add('hidden');
+                    text2.classList.remove('hidden');
+                    btn.disabled = true;
+                    btn.classList.add('opacity-50', 'cursor-not-allowed');
+                }
+                
+                btn.onclick = () => {
+                    content.classList.remove('modal-active');
+                    setTimeout(() => {
+                        modal.classList.add('hidden');
+                        resolve();
+                    }, 300);
+                };
+
+                modal.classList.remove('hidden');
+                void modal.offsetWidth; // trigger reflow
+                content.classList.add('modal-active');
+
+                if (type === 'teleport') {
+                    // Fast rolling number animation before revealing destination
+                    for(let i = 0; i < 20; i++) {
+                        let tempNum = Math.floor(Math.random() * 100) + 1;
+                        teleportMsg.innerHTML = `<b>Hostile Relocation!</b><br>Competitor <b style="color:${oppColor}">${oppName}</b> is relocating to tile... <br><span class="text-4xl md:text-5xl font-black text-yellow-400 inline-block mt-2 drop-shadow-md">${tempNum}</span>`;
+                        await sleep(50);
+                    }
+                    teleportMsg.innerHTML = `<b>Hostile Relocation!</b><br>Competitor <b style="color:${oppColor}">${oppName}</b> was relocated to tile <br><span class="text-4xl md:text-5xl font-black text-yellow-400 inline-block mt-2 drop-shadow-md animate-zoom-pop">${tile}</span>!`;
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            });
+        }
+
+        function showShieldModal() {
+            return new Promise(resolve => {
+                const modal = document.getElementById('shield-modal');
+                const content = document.getElementById('shield-modal-content');
+                const btn = document.getElementById('shield-ok-btn');
+                
+                btn.onclick = () => {
+                    content.classList.remove('modal-active');
+                    setTimeout(() => {
+                        modal.classList.add('hidden');
+                        resolve();
+                    }, 300);
+                };
+
+                modal.classList.remove('hidden');
+                void modal.offsetWidth;
+                content.classList.add('modal-active');
+            });
+        }
+
+        function showLadderModal(message) {
+            return new Promise(resolve => {
+                const modal = document.getElementById('ladder-modal');
+                const content = document.getElementById('ladder-modal-content');
+                const text = document.getElementById('ladder-text');
+                const btn = document.getElementById('ladder-ok-btn');
+                
+                text.innerText = message;
+                
+                btn.onclick = () => {
+                    content.classList.remove('modal-active');
+                    setTimeout(() => {
+                        modal.classList.add('hidden');
+                        resolve();
+                    }, 300);
+                };
+
+                modal.classList.remove('hidden');
+                void modal.offsetWidth; // trigger reflow
+                content.classList.add('modal-active');
+            });
+        }
+
+        function showSnakeModal(q) {
+            return new Promise(resolve => {
+                const modal = document.getElementById('snake-modal');
+                const content = document.getElementById('snake-modal-content');
+                const qText = document.getElementById('snake-question');
+                const optionsContainer = document.getElementById('snake-options');
+                const feedback = document.getElementById('snake-feedback');
+                const continueBtn = document.getElementById('snake-continue-btn');
+                
+                qText.innerText = q.q;
+                optionsContainer.innerHTML = '';
+                feedback.classList.add('hidden');
+                continueBtn.classList.add('hidden');
+                optionsContainer.classList.remove('hidden');
+                
+                let answeredCorrectly = false;
+                
+                // Randomize options
+                let randomizedOptions = [...q.options];
+                let correctString = q.options[q.ans];
+                randomizedOptions.sort(() => Math.random() - 0.5);
+
+                randomizedOptions.forEach((opt) => {
+                    const btn = document.createElement('button');
+                    btn.className = "w-full p-3 md:p-4 bg-slate-700 hover:bg-slate-600 text-left rounded-xl text-white font-medium transition border border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm text-sm md:text-base touch-manipulation";
+                    btn.innerText = opt;
+                    btn.onclick = () => {
+                        optionsContainer.classList.add('hidden');
+                        feedback.classList.remove('hidden');
+                        continueBtn.classList.remove('hidden');
+                        
+                        if (opt === correctString) {
+                            answeredCorrectly = true;
+                            feedback.innerText = "Correct! You dodged the snake.";
+                            feedback.className = "text-center text-xl md:text-2xl font-black rounded-xl p-4 bg-emerald-500/20 text-emerald-400 border-2 border-emerald-500 shadow-inner";
+                        } else {
+                            answeredCorrectly = false;
+                            feedback.innerText = "Wrong! Sliding down.";
+                            feedback.className = "text-center text-xl md:text-2xl font-black rounded-xl p-4 bg-red-500/20 text-red-400 border-2 border-red-500 shadow-inner";
+                        }
+                    };
+                    optionsContainer.appendChild(btn);
+                });
+
+                continueBtn.onclick = () => {
+                    content.classList.remove('modal-active');
+                    setTimeout(() => {
+                        modal.classList.add('hidden');
+                        resolve(answeredCorrectly);
+                    }, 300);
+                };
+
+                modal.classList.remove('hidden');
+                void modal.offsetWidth; // trigger reflow
+                content.classList.add('modal-active');
+            });
+        }
+
+
+        // --- UI UPDATES ---
+        function updateTurnUI() {
+            const p = players[turnIndex];
+            const turnIcon = document.getElementById('turn-icon');
+            turnIcon.style.color = p.color;
+            turnIcon.innerHTML = `<i class="fa-solid fa-user-tie drop-shadow-sm text-xl"></i>`;
+            document.getElementById('turn-text').innerText = `${p.name}'s Turn`;
+            document.getElementById('turn-text').style.color = p.color;
+            
+            updatePlayerStatsUI(); // Ensure highlight updates on turn change
+        }
+
+        function updatePlayerStatsUI() {
+            const list = document.getElementById('player-stats-list');
+            list.innerHTML = '';
+            
+            players.forEach(p => {
+                const item = document.createElement('div');
+                item.className = "flex items-center justify-between px-3 py-2 rounded-lg border transition-all duration-300";
+                
+                const leftSide = document.createElement('div');
+                leftSide.className = "flex items-center gap-[15px]";
+                
+                const iconWrapper = document.createElement('div');
+                iconWrapper.className = "flex items-center justify-center shrink-0 w-6 h-6";
+                iconWrapper.innerHTML = `<i class="fa-solid fa-user-tie drop-shadow-sm text-xl"></i>`;
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.className = "text-sm font-bold";
+                nameSpan.innerText = p.name;
+                
+                // Highlight logic for active player
+                if (players.length > 0 && p.id === players[turnIndex].id) {
+                    item.style.backgroundColor = p.color;
+                    item.style.borderColor = p.color;
+                    item.style.boxShadow = `0 0 16px ${p.color}`;
+                    item.classList.add('scale-105', 'z-10');
+                    
+                    // Contrast logic to keep text visible
+                    const isLightColor = p.color === '#facc15' || p.color === '#22c55e'; // Yellow or Green
+                    const textColor = isLightColor ? '#0f172a' : '#ffffff';
+                    
+                    item.style.color = textColor;
+                    iconWrapper.style.color = textColor;
+                    nameSpan.style.color = textColor;
+                } else {
+                    item.style.backgroundColor = '#1e293b'; // bg-slate-800
+                    item.style.borderColor = '#334155'; // border-slate-700
+                    item.style.boxShadow = 'none';
+                    item.classList.remove('scale-105', 'z-10');
+                    
+                    iconWrapper.style.color = p.color;
+                    nameSpan.style.color = p.color;
+                }
+                
+                leftSide.appendChild(iconWrapper);
+                leftSide.appendChild(nameSpan);
+                
+                const rightSide = document.createElement('div');
+                if (p.shield) {
+                    rightSide.innerHTML = '<span class="text-sm shield-icon" title="Shield Active">🛡️</span>';
+                } else {
+                    rightSide.innerHTML = '<span class="text-sm opacity-20 grayscale" title="No Shield">🛡️</span>';
+                }
+                
+                item.appendChild(leftSide);
+                item.appendChild(rightSide);
+                list.appendChild(item);
+            });
+        }
+
+        function showWinOverlay(winner) {
+            const overlay = document.getElementById('win-overlay');
+            const winText = document.getElementById('win-text');
+            winText.innerHTML = `<span style="color:${winner.color}">${winner.name}</span><br>Becomes the CEO!`;
+            overlay.classList.remove('hidden');
+        }
+
+        function logMessage(msg) {
+            const box = document.getElementById('log-box');
+            const el = document.createElement('div');
+            el.innerHTML = `> ${msg}`;
+            el.className = "text-slate-300 leading-tight";
+            box.appendChild(el);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function updateTokenPositions() {
+            if(players.length === 0) return;
+            const boardRect = boardContainer.getBoundingClientRect();
+            
+            // Count players in each cell to manage overlaps
+            const cellCounts = {};
+            players.forEach(p => { if (p.pos > 0) cellCounts[p.pos] = (cellCounts[p.pos] || 0) + 1; });
+            const currentCounts = {};
+            
+            players.forEach(p => {
+                const token = document.getElementById(`token-${p.id}`);
+                let left, top;
+                
+                if (p.pos === 0) {
+                    // Position at bottom-left corner before entering board
+                    left = 24 + p.id * 24;
+                    top = boardRect.height - 24;
+                } else {
+                    const cell = document.getElementById(`cell-${p.pos}`);
+                    if(!cell) return;
+                    const cellRect = cell.getBoundingClientRect();
+                    
+                    left = cellRect.left - boardRect.left + cellRect.width / 2;
+                    top = cellRect.top - boardRect.top + cellRect.height / 2;
+                    
+                    // Offset overlapping tokens radially
+                    currentCounts[p.pos] = (currentCounts[p.pos] || 0) + 1;
+                    const total = cellCounts[p.pos];
+                    if (total > 1) {
+                        const offsetIdx = currentCounts[p.pos] - 1;
+                        const angle = (offsetIdx / total) * Math.PI * 2 + Math.PI/4;
+                        const radius = cellRect.width * 0.25; 
+                        left += Math.cos(angle) * radius;
+                        top += Math.sin(angle) * radius;
+                    }
+                }
+                
+                token.style.left = `${left}px`;
+                token.style.top = `${top}px`;
+            });
+        }
+
+        // --- DRAWING LOGIC (CANVAS) ---
+        function drawCanvas() {
+            const canvas = document.getElementById('overlay-canvas');
+            const boardRect = boardContainer.getBoundingClientRect();
+            if(boardRect.width === 0) return;
+            
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = boardRect.width * dpr;
+            canvas.height = boardRect.height * dpr;
+            canvas.style.width = `${boardRect.width}px`;
+            canvas.style.height = `${boardRect.height}px`;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            ctx.clearRect(0, 0, boardRect.width, boardRect.height);
+            
+            const getCenter = (num) => {
+                const cell = document.getElementById(`cell-${num}`);
+                if(!cell) return {x:0, y:0};
+                const rect = cell.getBoundingClientRect();
+                return {
+                    x: rect.left - boardRect.left + rect.width / 2,
+                    y: rect.top - boardRect.top + rect.height / 2
+                };
+            };
+            
+            // Draw Ladders first
+            ladders.forEach(l => {
+                const start = getCenter(l.start);
+                const end = getCenter(l.end);
+                drawLadder(ctx, start.x, start.y, end.x, end.y);
+            });
+            
+            // Draw Snakes
+            snakes.forEach((s) => {
+                const start = getCenter(s.start); // Head location
+                const end = getCenter(s.end);     // Tail location
+                drawSnake(ctx, start.x, start.y, end.x, end.y);
+            });
+        }
+
+        function drawLadder(ctx, startX, startY, endX, endY) {
+            const dx = endX - startX;
+            const dy = endY - startY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const nx = -dy / distance;
+            const ny = dx / distance;
+            
+            const width = Math.max(16, distance * 0.05);
+            const leftX1 = startX + nx * width/2; const leftY1 = startY + ny * width/2;
+            const leftX2 = endX + nx * width/2;   const leftY2 = endY + ny * width/2;
+            const rightX1 = startX - nx * width/2; const rightY1 = startY - ny * width/2;
+            const rightX2 = endX - nx * width/2;   const rightY2 = endY - ny * width/2;
+            
+            // Rails
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 6;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(leftX1, leftY1); ctx.lineTo(leftX2, leftY2);
+            ctx.moveTo(rightX1, rightY1); ctx.lineTo(rightX2, rightY2);
+            ctx.stroke();
+            
+            // Rungs
+            const rungs = Math.floor(distance / 25);
+            ctx.strokeStyle = '#475569';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            for(let i = 1; i <= rungs; i++) {
+                const t = i / (rungs + 1);
+                const px = startX + dx * t;
+                const py = startY + dy * t;
+                ctx.moveTo(px + nx * width/2, py + ny * width/2);
+                ctx.lineTo(px - nx * width/2, py - ny * width/2);
+            }
+            ctx.stroke();
+        }
+
+        function drawSnake(ctx, startX, startY, endX, endY) {
+            const dx = endX - startX;
+            const dy = endY - startY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const nx = -dy / distance;
+            const ny = dx / distance;
+            
+            const wiggles = Math.max(3, Math.floor(distance / 45));
+            
+            // Shadow
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            ctx.shadowBlur = 6;
+            ctx.shadowOffsetX = 3;
+            ctx.shadowOffsetY = 3;
+            
+            // Vibrant gradient
+            const gradient = ctx.createLinearGradient(startX, startY, endX, endY);
+            gradient.addColorStop(0, '#ff0055');
+            gradient.addColorStop(0.2, '#ffaa00');
+            gradient.addColorStop(0.4, '#aaff00');
+            gradient.addColorStop(0.6, '#00aaff');
+            gradient.addColorStop(0.8, '#aa00ff');
+            gradient.addColorStop(1, '#ff00aa');
+            
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            
+            // Wavy Body
+            for(let i = 1; i <= wiggles; i++) {
+                const t0 = (i-1)/wiggles;
+                const t1 = i/wiggles;
+                const tc = (t0 + t1)/2;
+                
+                const px1 = startX + dx * t1; const py1 = startY + dy * t1;
+                const pcx = startX + dx * tc; const pcy = startY + dy * tc;
+                
+                const offset = (i % 2 === 0 ? 1 : -1) * (distance * 0.1); 
+                ctx.quadraticCurveTo(pcx + nx * offset, pcy + ny * offset, px1, py1);
+            }
+            
+            ctx.lineWidth = clamp(8, distance * 0.04, 16);
+            ctx.strokeStyle = gradient;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+            
+            ctx.shadowColor = 'transparent'; // Reset Shadow
+            
+            // Snake Back Pattern
+            ctx.lineWidth = ctx.lineWidth * 0.3;
+            ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+            ctx.setLineDash([ctx.lineWidth * 2, ctx.lineWidth * 3]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // Head orientation
+            const angle = Math.atan2(dy, dx);
+            ctx.save();
+            ctx.translate(startX, startY);
+            ctx.rotate(angle + Math.PI); 
+            
+            // Head shape
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 16, 12, 0, 0, Math.PI * 2);
+            ctx.fillStyle = '#ff0055';
+            ctx.fill();
+            
+            // Eyes
+            ctx.fillStyle = 'white';
+            ctx.beginPath(); ctx.arc(7, -5, 3.5, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(7, 5, 3.5, 0, Math.PI*2); ctx.fill();
+            
+            ctx.fillStyle = 'black';
+            ctx.beginPath(); ctx.arc(8, -5, 1.5, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(8, 5, 1.5, 0, Math.PI*2); ctx.fill();
+            
+            // Eyebrows
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(3, -8); ctx.lineTo(10, -4);
+            ctx.moveTo(3, 8); ctx.lineTo(10, 4);
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+
+        function clamp(min, val, max) { return Math.min(Math.max(val, min), max); }
+
+        // Responsive redrawing
+        const resizeObserver = new ResizeObserver(() => {
+            if(!document.getElementById('game-screen').classList.contains('hidden')) {
+                drawCanvas();
+                updateTokenPositions();
+            }
+        });
+        resizeObserver.observe(boardContainer);
+    </script>
+</body>
+</html>
